@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>블루 아카이브 스킬업 소재 계산기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Fonts load asynchronously so they cannot block rendering. Loading them
+     synchronously stalls the whole app wherever fonts.googleapis.com is slow
+     or blocked (corporate networks, some regions).
+     Measured: 14s to first paint on a connection that resets. -->
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"></noscript>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231B6BE0'/%3E%3Cpath d='M8 21V11h4a3 3 0 010 6H8m10 4V11h6' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="web/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">스킬업 소재 계산기 <small id="ver">—</small></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-view="students" aria-selected="true">학생</button>
+      <button class="tab" role="tab" data-view="inventory" aria-selected="false">보유 재고</button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="savehint" id="savehint"></span>
+    <button class="act" id="btn-import">불러오기</button>
+    <button class="act primary" id="btn-export">내보내기</button>
+    <input type="file" id="file-input" accept=".json,application/json" hidden>
+  </header>
+
+  <div class="main">
+    <div class="pane" id="pane">
+      <div class="loading" id="loading">데이터 불러오는 중…</div>
+
+      <div id="view-students" class="hidden">
+        <div id="pending-bar"></div>
+
+        <div class="filters">
+          <input type="search" id="q" placeholder="학생 이름 검색" autocomplete="off">
+          <label><input type="checkbox" id="only-own"> 보유만</label>
+          <label><input type="checkbox" id="only-need"> 소요 있는 학생만</label>
+          <button class="act" id="btn-filters">필터</button>
+          <span class="spacer"></span>
+          <span class="count" id="count"></span>
+        </div>
+
+        <div id="filterwrap" class="hidden"></div>
+
+        <div class="filters toolbar">
+          <span class="tlabel">열</span>
+          <div class="seg" id="colgroups">
+            <button data-col="cur" aria-pressed="true">현재</button>
+            <button data-col="tgt" aria-pressed="true">목표</button>
+            <button data-col="gear" aria-pressed="true">장비</button>
+          </div>
+          <span class="tlabel">목표 일괄</span>
+          <div class="seg" id="presets"></div>
+          <span class="tlabel">장비 목표</span>
+          <div class="seg" id="gearpresets"></div>
+        </div>
+
+        <div class="tablewrap"><table class="grid" id="tbl"></table></div>
+      </div>
+
+      <div id="view-inventory" class="hidden">
+        <div class="filters"><span class="count">보유량을 입력하면 우측 집계에 부족분이 표시됩니다.</span></div>
+        <div id="inv"></div>
+      </div>
+    </div>
+
+    <aside class="rail" id="rail"></aside>
+  </div>
+</div>
+<script type="module" src="web/app.js"></script>
+</body>
+</html>

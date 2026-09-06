@@ -1,0 +1,37 @@
+# Point Synology Container Manager > Project at this repository folder as-is.
+# (compose.yaml lives at the repository root because relative paths resolve
+#  against the project folder; in a subfolder they become ../ and Container
+#  Manager frequently mis-resolves them.)
+#
+# No image is built. The official nginx image simply mounts the repository
+# read-only, which is why an update is `git pull` and nothing else: no build.
+#
+# Mounting four specific paths instead of the whole repository matters:
+#   - exposing .git would publish the entire commit history
+#   - data/ holds real account state; only data/game is served
+#   - scripts / tests / docs have no reason to be reachable from a browser
+# These four paths are exactly what the app fetches.
+
+services:
+  ba-skillup-calc:
+    image: nginx:1.27-alpine
+    container_name: ba-skillup-calc
+    restart: unless-stopped
+    ports:
+      # host:container. Change only the number on the left.
+      # Not bound to 127.0.0.1: VPN clients on the LAN need to reach it.
+      - "8080:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./web:/usr/share/nginx/html/web:ro
+      - ./src:/usr/share/nginx/html/src:ro
+      - ./data/game:/usr/share/nginx/html/data/game:ro
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/index.html"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }

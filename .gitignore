@@ -1,0 +1,23 @@
+node_modules/
+dist/
+*.xlsx
+!docs/reference/*.xlsx
+__pycache__/
+.venv/
+*.log
+.git/_trash/
+
+# Real account state — never committed. Tests run against data/state_fixture.json.
+data/state_sample.json
+data/expected.json
+data/expected_opart.json
+
+# Transient artifacts (icon preview sheets, etc.)
+.icons_preview.png
+
+# Cross-check reports — regenerated whenever the workbook is updated
+data/crosscheck_opart.json
+data/crosscheck_wiki.json
+
+# Local-only operations notes containing personal infrastructure details
+docs/NAS.local.md
