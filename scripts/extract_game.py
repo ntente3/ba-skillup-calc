@@ -358,7 +358,7 @@ def extract_schools_from_calc(wsbd):
     return out
 
 
-def resolve_school(name, schools, collab_schools):
+def resolve_school(name, schools, collab_schools, override_schools=()):
     """The 학생_학교 sheet does not carry skin variants or collab characters.
 
     A skin variant (`코유키(파자마)`) follows the school of the original student — strip the
@@ -373,7 +373,18 @@ def resolve_school(name, schools, collab_schools):
         return schools[base], "variant"
     if name in collab_schools:
         return collab_schools[name], "collab"
+    if name in override_schools:
+        return override_schools[name], "override"
     return None, "unresolved"
+
+
+def override_schools():
+    path = os.path.join(OUT, "skill_costs_override.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    return {v["name"]: v["school"] for v in doc["students"].values() if v.get("school")}
 
 
 def write(name, obj):
@@ -414,12 +425,18 @@ if __name__ == "__main__":
         if row["name"] and row.get("event"):
             collab_schools.setdefault(row["name"], "콜라보")
 
+    ext = override_schools()
     roster = []
     src_count = {}
     for n in order:
-        school, src = resolve_school(n, schools, collab_schools)
+        school, src = resolve_school(n, schools, collab_schools, ext)
         src_count[src] = src_count.get(src, 0) + 1
         roster.append({**students[n], "school": school, "schoolSrc": src})
+    for sc in ext.values():
+        if sc not in school_order:
+            school_order.insert(school_order.index("콜라보") if "콜라보" in school_order
+                                else len(school_order), sc)
+            print(f"  school order: added {sc} (not on the calculation sheet)")
     sizes = {
         "students.json":    write("students.json", roster),
         "schools.json":     write("schools.json", school_order),
@@ -438,6 +455,10 @@ if __name__ == "__main__":
     unresolved = [s["name"] for s in roster if not s["school"]]
     if unresolved:
         print(f"  {len(unresolved)} unresolved: {unresolved}")
+    stray = sorted({g for s in roster for g in s["gear"] if g not in gear["types"]})
+    if stray:
+        print(f"  WARNING gear types not in the master (their requirement is dropped): {stray}"
+              "\n    -> fix the name in the workbook, or add the type to 3. 장비 계산")
     total = 0
     for k, v in sizes.items():
         print(f"  {k:20} {v:>9,} B")

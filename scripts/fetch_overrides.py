@@ -44,9 +44,8 @@ EQUIP_KO = {"Hat": "모자", "Gloves": "장갑", "Shoes": "신발", "Bag": "가�
 SCHOOL_KO = {"Hyakkiyako": "백귀야행", "RedWinter": "붉은겨울", "Trinity": "트리니티",
              "Gehenna": "게헨나", "Abydos": "아비도스", "Millennium": "밀레니엄",
              "Arius": "아리우스", "Shanhaijing": "산해경", "Valkyrie": "발키리",
-             "Highlander": "하이랜더", "WildHunt": "와일드헌트",
-             "SRT": "콜라보", "Tokiwadai": "콜라보", "Sakugawa": "콜라보",
-             "Odyssey": "콜라보", "ETC": "콜라보"}
+             "Highlander": "하이랜더", "WildHunt": "와일드헌트", "Odyssey": "오디세이아",
+             "SRT": "콜라보", "Tokiwadai": "콜라보", "Sakugawa": "콜라보", "ETC": "콜라보"}
 
 
 def get(url):

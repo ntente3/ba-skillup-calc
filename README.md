@@ -13,7 +13,8 @@ their respective owners.
 Plan how much material you need to take students from their current levels to your
 targets, and see what you are short of against your current inventory.
 
-- **269+ students**, 20 orb material types x 4 grades, per-school Blu-rays and notes,
+- **276 students** (JP-released, ahead of the KR roster), 20 orb material types x 4
+  grades, per-school Blu-rays and notes,
   gear tiers, credits, and collab events
 - **Multi-axis filtering** — school, attack type, defense type, weapon, position,
   squad, role, rarity, current star
@@ -61,7 +62,8 @@ both are covered by property tests.
 The calculation was ported from spreadsheet formulas, so it is checked two ways.
 
 **Against the source spreadsheet.** The workbook caches its own computed results; those
-are the answer key. All students compared on Blu-rays, notes, credits, gear credits, and
+are the answer key. All 269 students the workbook has compared on Blu-rays, notes,
+credits, gear credits, and
 orb materials — all matching.
 
 **Against independent sources.** Spreadsheet coverage is bounded by one account's state,
@@ -103,6 +105,21 @@ python scripts/extract_game.py  <workbook.xlsx>   # game data + overrides
 python scripts/fetch_tags.py                      # student attributes
 python scripts/extract_icons.py <workbook.xlsx>   # material icons
 ```
+
+Students released on JP but not yet in the workbook come from SchaleDB instead. Nothing of
+the workbook is overwritten — the student is simply absent from it, so there is no verified
+value to lose:
+
+```
+python scripts/add_students.py --dry-run   # what is missing, and what it would write
+python scripts/add_students.py             # sid, roster, costs, school, override entry
+python scripts/fetch_tags.py               # attribute tags for the new sids
+```
+
+It assigns the next sid and never reuses one, records the rows in the accumulating override
+so a later workbook run keeps them, and refuses to write if a student needs an artifact or
+gear type the masters do not list — that would otherwise be dropped from the totals in
+silence.
 
 To re-verify after a patch:
 
