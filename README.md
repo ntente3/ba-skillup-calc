@@ -20,6 +20,9 @@ targets, and see what you are short of against your current inventory.
 - **Bulk targets** — 3/5/5/5, 4/7/7/7, 5/9/9/9 applied to whatever the filter shows
 - **Pending consumption** — raise a current level and the app stages the materials it
   would cost, then subtracts them from inventory only when you commit
+- **New-student reserve** — surplus is measured against what the next release can consume
+  (6 students per school for Blu-rays and notes, 3 per artifact type — students split across
+  two), so a satisfied row still says whether you are ready for next patch
 - **Export / import** — your data lives in your browser; a JSON file moves it between devices
 
 ## Architecture
@@ -30,7 +33,7 @@ src/core/      Calculation. Pure functions, no DOM, no I/O.
 src/state/     User state schema and serialization.
 web/           UI. Vanilla ES modules, no framework.
 scripts/       Extraction and verification pipeline (Python + Node).
-tests/         21 tests plus a full-roster comparison against the source spreadsheet.
+tests/         25 tests plus a full-roster comparison against the source spreadsheet.
 ```
 
 There is no backend. Game data is static files; the calculation runs entirely in the
@@ -84,7 +87,7 @@ Requires Node 18+.
 
 ```
 npm run dev     # http://localhost:8080
-npm test        # 21 tests
+npm test        # 25 tests
 npm run parity  # full-roster comparison against the spreadsheet
 ```
 
@@ -126,6 +129,7 @@ sees no gap, and regenerating drops the entry.
 | [0006](docs/adr/0006-collab.md) | Collab folded into existing totals |
 | [0007](docs/adr/0007-opart-verification.md) | Orb verification and cumulative repair |
 | [0008](docs/adr/0008-three-way-crosscheck.md) | Three-way cross-check |
+| [0009](docs/adr/0009-new-student-reserve.md) | Surplus against a new-student reserve |
 
 ## License
 

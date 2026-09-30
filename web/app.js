@@ -9,7 +9,7 @@
  * position survive.
  */
 import { loadGame } from "./data.js";
-import { buildIndex, computeAll, derivedUniq, effectiveTgtStar } from "../src/core/calc.js";
+import { buildIndex, computeAll, derivedUniq, effectiveTgtStar, reserveIndex } from "../src/core/calc.js";
 import { SLOTS, SLOT_INDEX, emptyStudent } from "../src/state/schema.js";
 import { normalize, encodeFile, decodeFile, LoadError } from "../src/state/codec.js";
 import { consumption } from "../src/core/calc.js";
@@ -20,7 +20,7 @@ const STORAGE_KEY = "ba-skillup-state-v1";
 const $ = (s, r = document) => r.querySelector(s);
 
 let GAME, IDX, STATE, ROWS = new Map();
-let FILTERS, PENDING;
+let FILTERS, PENDING, RESERVE;
 
 /** Bulk target presets. Values are ordered EX / Normal / Passive / Sub. */
 const SKILL_PRESETS = [
@@ -362,22 +362,48 @@ function icon(key) {
   return file ? `<img class="ico" src="web/icons/${file}" alt="" loading="lazy">` : "";
 }
 
+/** New-student reserve for one stock key. Gear has none — see reserveIndex. */
+function reserveFor(key) {
+  if (!key) return 0;
+  const [kind, a, b] = key.split(".");
+  if (kind === "bd") return RESERVE.bd[b] || 0;
+  if (kind === "note") return RESERVE.note[b] || 0;
+  if (kind === "op") return RESERVE.opart[a]?.[b] || 0;
+  return 0;
+}
+
+/** Schools that hold stock: every school with a student of its own. The collab
+    pseudo-school has only collab students, whose cost lands on real schools. */
+const reserveSchools = () =>
+  [...new Set(GAME.students.filter((s) => !IDX.collab.has(s.sid)).map((s) => s.school))].filter(Boolean);
+
 function row(label, need, key) {
   const have = key ? (STATE.inv[key] || 0) : null;
+  const res = reserveFor(key);
+  const safe = need + res;                        // the requirement plus the next release
   const short = have === null ? 0 : Math.max(0, need - have);
-  const cls = !need ? "zero" : short > 0 ? "lack" : "done";
-  const fill = !need ? 0 : Math.min(100, Math.round(((have ?? 0) / need) * 100));
+  const over = have === null ? 0 : have - safe;   // positive: spare above the safe line
+
+  const cls = have === null ? "zero"
+    : short > 0 ? "lack"
+    : over < 0 ? "buf"
+    : over > 0 ? "done over"
+    : safe ? "done" : "zero";
+  const fill = safe ? Math.min(100, Math.round(((have ?? 0) / safe) * 100)) : have ? 100 : 0;
 
   const tip = have === null
     ? `필요 ${fmt(need)} · 보유량 미관리`
-    : `필요 ${fmt(need)} · 보유 ${fmt(have)} · ${short > 0 ? `부족 ${fmt(short)}` : `여유 ${fmt(have - need)}`}`;
+    : [`필요 ${fmt(need)}`, `보유 ${fmt(have)}`, res ? `여유기준 ${fmt(res)}` : null,
+       short > 0 ? `부족 ${fmt(short)}`
+         : over < 0 ? `기준까지 ${fmt(-over)}` : `초과 ${fmt(over)}`]
+      .filter(Boolean).join(" · ");
 
-  // The right-hand number holds only what still has to be done. When the
-  // requirement is met there is nothing to do, so it stays empty: the check
-  // mark and the green bar already say so, and a third "met" would be the
-  // same statement three times over.
-  const mark = !need ? "·" : short > 0 ? "▲" : "✓";
-  const val = short > 0 ? fmt(short) : "";
+  // The number is always a distance to a line; the glyph says which line and which way.
+  // ▲ under the requirement, △ requirement met but under the reserve, ✓ on the line,
+  // + spare above it. Still no signed numbers — see ADR 0003 and 0009.
+  const mark = have === null ? "·"
+    : short > 0 ? "▲" : over < 0 ? "△" : over > 0 ? "+" : safe ? "✓" : "·";
+  const val = short > 0 ? fmt(short) : over !== 0 ? fmt(Math.abs(over)) : "";
 
   return `<div class="totrow ${cls}${DETAIL ? " detail" : ""}" style="--fill:${fill}%" title="${esc(tip)}">
     <span class="mark">${mark}</span>
@@ -393,17 +419,19 @@ const groupHead = (name) =>
      ${DETAIL ? "<span></span>" : ""}<span></span>
    </div>`;
 
-/** Show only shortfalls, or everything. Defaults to shortfalls only, so the
-    list holds just what needs acting on. */
+/** Which rows the rail lists. Shortfalls by default, so the list holds just what needs
+    acting on; "over" is the other end — stock past the new-student reserve. */
 let DETAIL = false;
-let SHORT_ONLY = true;
+let MODE = "short";                       // short | over | all
 
 const isShort = (need, key) => need > 0 && need - (key ? (STATE.inv[key] || 0) : 0) > 0;
+const isOver = (need, key) => !!key && (STATE.inv[key] || 0) - need - reserveFor(key) > 0;
+const shows = (it) =>
+  MODE === "all" ? true : MODE === "over" ? isOver(it.need, it.key) : isShort(it.need, it.key);
 
-/** Visibility filter. In shortfall-only mode this keeps short rows and their
-    group headers. */
+/** Visibility filter — keeps the matching rows and their group headers. */
 function rowsFor(items) {
-  const keep = SHORT_ONLY ? items.filter((it) => it.head || isShort(it.need, it.key)) : items;
+  const keep = items.filter((it) => it.head || shows(it));
   // Drop group headers left with no materials behind them
   const out = [];
   for (let i = 0; i < keep.length; i++) {
@@ -419,11 +447,14 @@ const renderRows = (items) => {
   return list.map((it) => (it.head ? groupHead(it.head) : row(it.label, it.need, it.key))).join("");
 };
 
-const shortCount = (items) => items.filter((it) => !it.head && isShort(it.need, it.key)).length;
+const countOf = (items, f) => items.filter((it) => !it.head && f(it.need, it.key)).length;
 
+/** Shortfall always earns a badge; the surplus count only while that mode is on. */
 const badge = (items) => {
-  const n = shortCount(items);
-  return n ? `<span class="badge">부족 ${n}</span>` : "";
+  const short = countOf(items, isShort);
+  const over = MODE === "over" ? countOf(items, isOver) : 0;
+  return (short ? `<span class="badge">부족 ${short}</span>` : "") +
+         (over ? `<span class="badge over">초과 ${over}</span>` : "");
 };
 
 function renderRail() {
@@ -433,10 +464,21 @@ function renderRail() {
 
   out.push(`<div class="railtools">
     <div class="seg">
-      <button data-mode="short" aria-pressed="${SHORT_ONLY}">부족만</button>
-      <button data-mode="all" aria-pressed="${!SHORT_ONLY}">전체</button>
+      <button data-mode="short" aria-pressed="${MODE === "short"}">부족만</button>
+      <button data-mode="over" aria-pressed="${MODE === "over"}">초과</button>
+      <button data-mode="all" aria-pressed="${MODE === "all"}">전체</button>
     </div>
     <div class="seg"><button data-detail="1" aria-pressed="${DETAIL}">필요/보유</button></div>
+  </div>`);
+
+  // The reserve glyphs cannot be read without the thresholds behind them, so the legend
+  // rides along wherever those glyphs can appear.
+  if (MODE !== "short") out.push(`<div class="railnote">
+    <b>여유 기준 — 신규 ${RESERVE.batch}명</b>
+    2주 간격 최다 출시가 ${RESERVE.batch}명이므로 BD·노트는 학교별 ${RESERVE.batch}명분,
+    오파츠는 학생마다 2종(메인·서브)으로 나뉘므로 종류·등급별 ${RESERVE.perType}명분(메인소비 기준, EX 5 · 나머지 9).
+    <span class="mk lack">▲</span>부족 <span class="mk buf">△</span>기준까지
+    <span class="mk over">+</span>초과
   </div>`);
 
   out.push(`<div class="bigstat"><span class="k">필요 크레딧</span><span class="v">${fmt(t.credit)}</span></div>`);
@@ -451,37 +493,45 @@ function renderRail() {
   // from the calculation sheet, so anyone reading the workbook alongside this
   // would have to re-locate every row.
   const rank = new Map((GAME.schools || []).map((s, i) => [s, i]));
-  const schools = Object.keys(lastResult.bySchool)
+  // The reserve covers every school and every artifact type, not only what is needed
+  // today — a new student can come from any school and draw any type. So rows span the
+  // whole stock universe and the mode filter decides which of them are shown.
+  const stocked = new Set(reserveSchools());
+  const schools = [...new Set([...stocked, ...Object.keys(lastResult.bySchool)])]
     .sort((a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999) || a.localeCompare(b, "ko"));
 
   const bdItems = [], noteItems = [];
+  const NOTHING = { bd: [0, 0, 0, 0], note: [0, 0, 0, 0, 0] };
   for (const sc of schools) {
-    const b = lastResult.bySchool[sc];
-    if (b.bd.some(Boolean)) {
-      bdItems.push({ head: sc });
-      m.bdGrades.forEach((g, i) => { if (b.bd[i]) bdItems.push({ label: g, need: b.bd[i], key: `bd.${sc}.${i}` }); });
-    }
-    if (b.note.some(Boolean)) {
-      noteItems.push({ head: sc });
-      m.noteGrades.forEach((g, i) => {
-        if (b.note[i]) noteItems.push({ label: g, need: b.note[i], key: i < 4 ? `note.${sc}.${i}` : null });
-      });
-    }
+    const b = lastResult.bySchool[sc] || NOTHING;
+    // "(secret)" and the collab pseudo-school hold no stock of their own, so they show up
+    // only when something is actually required of them.
+    const held = stocked.has(sc);
+    const bd = m.bdGrades
+      .map((g, i) => ({ label: g, need: b.bd[i] || 0, key: `bd.${sc}.${i}` }))
+      .filter((it) => held || it.need);
+    if (bd.length) bdItems.push({ head: sc }, ...bd);
+    const note = m.noteGrades
+      .map((g, i) => ({ label: g, need: b.note[i] || 0, key: i < 4 ? `note.${sc}.${i}` : null }))
+      .filter((it) => (held && it.key) || it.need);
+    if (note.length) noteItems.push({ head: sc }, ...note);
   }
 
   const opItems = [];
   t.opart.forEach((grades, mi) => {
-    grades.forEach((need, g) => {
-      if (need) opItems.push({ label: `${m.opart[mi]} ${g + 1}`, need, key: `op.${mi}.${g}` });
-    });
+    grades.forEach((need, g) =>
+      opItems.push({ label: `${m.opart[mi]} ${g + 1}`, need, key: `op.${mi}.${g}` }));
   });
 
-  const gearItems = Object.entries(t.gear)
-    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
-    .map(([k, need]) => {
-      const [ti, tier] = k.split(".");
-      return { label: `${GAME.gear.types[ti] || `종류${ti}`} T${tier}`, need, key: `eq.${ti}.${tier}` };
-    });
+  // Gear carries no reserve, so a tier appears only when it is needed or held.
+  const gearItems = [];
+  (GAME.gear.types || []).forEach((name, ti) => {
+    for (const tier of GAME.gear.tierLabels) {
+      const key = `eq.${ti}.${tier}`;
+      const need = t.gear[`${ti}.${tier}`] || 0;
+      if (need || STATE.inv[key]) gearItems.push({ label: `${name} T${tier}`, need, key });
+    }
+  });
 
   const section = (title, items) =>
     `<section><h2>${esc(title)}${badge(items)}</h2><div class="totbox">${renderRows(items)}</div></section>`;
@@ -494,12 +544,14 @@ function renderRail() {
   const rail = $("#rail");
   rail.innerHTML = out.join("");
   rail.querySelectorAll("[data-mode]").forEach((b) => {
-    b.onclick = () => { SHORT_ONLY = b.dataset.mode === "short"; renderRail(); };
+    b.onclick = () => { MODE = b.dataset.mode; renderRail(); };
   });
   rail.querySelector("[data-detail]").onclick = () => { DETAIL = !DETAIL; renderRail(); };
 }
 
-const emptyRow = () => `<div class="totrow zero"><span class="mark">·</span><span class="lbl">${SHORT_ONLY ? "부족한 소재 없음" : "소요 없음"}</span>${DETAIL ? "<span></span>" : ""}<span class="val"></span></div>`;
+const emptyRow = () => `<div class="totrow zero"><span class="mark">·</span><span class="lbl">${
+  MODE === "short" ? "부족한 소재 없음" : MODE === "over" ? "기준을 넘는 재고 없음" : "소요 없음"
+}</span>${DETAIL ? "<span></span>" : ""}<span class="val"></span></div>`;
 
 /* ---------------- stock on hand ---------------- */
 
@@ -626,6 +678,7 @@ async function init() {
     return;
   }
   IDX = buildIndex(GAME);
+  RESERVE = reserveIndex(IDX);
   STATE = loadState();
   PENDING = createPending(IDX, (sid) => toObj(stu(sid)));
 

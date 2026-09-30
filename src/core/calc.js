@@ -214,6 +214,76 @@ export function derivedUniq(star) {
 }
 
 /* ------------------------------------------------------------------ */
+/* new-student reserve                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Largest release batch on record: 6 students inside one 2-week cycle. */
+export const RESERVE_BATCH = 6;
+
+/** What "ready for a new student" means — EX 5, the other three skills 9. Level 10 is left
+ *  out: it needs secret notes, which cannot be farmed ahead. */
+const NEW_EX = 5, NEW_SKILL = 9, NEW_SKILL_SLOTS = 3;
+
+/** Artifact types one student's skills draw — 262 of the 266 students on record use exactly
+ *  two, a main and a secondary. It divides the batch, so tests/reserve.test.mjs asserts the
+ *  data still agrees; a patch that changes the split has to be seen, not silently absorbed. */
+const ARTIFACT_TYPES_PER_STUDENT = 2;
+
+/** Cumulative requirement at or below `lv`; the per-student tables skip free levels. */
+function reqAt(m, lv) {
+  if (!m) return [];
+  let best = null;
+  for (const k of m.keys()) if (k <= lv && (best === null || k > best)) best = k;
+  return best === null ? [] : m.get(best);
+}
+
+/**
+ * Safety stock — how much *surplus* is worth holding for students not yet released.
+ *
+ * Shortfall answers "can I finish the students I own". It says nothing about whether a
+ * student announced tomorrow can be raised on the spot, which is what a surplus is for.
+ * The two material kinds are spent differently, so the threshold differs:
+ *
+ *  - **Blu-rays and notes** are per-school currencies and a whole batch can land in one
+ *    school, so the reserve is `batch x one student`.
+ *
+ *  - **Artifacts** are spent in two roles per student, a main type and a secondary one, and
+ *    unlike a school they are not drawn sparsely — every release consumes both roles. So
+ *    the same batch logic applies, halved by the two types a student splits across:
+ *    `batch / 2` students' worth per type. The per-student unit is the largest bill on
+ *    record for that type and grade, which is the main-consumption level (grades 1-3 come
+ *    from the main role, grade 4 from the secondary one), so any new student is covered
+ *    whichever role they put the type in.
+ *
+ * Gear gets no reserve: its tiers are shared by every student and farmed continuously, so
+ * there is no release event to be caught out by.
+ */
+export function reserveIndex(idx, batch = RESERVE_BATCH) {
+  const bd = (cumAt(idx.cum.bd, NEW_EX) || []).map((v) => v * batch);
+  const note = (cumAt(idx.cum.note, NEW_SKILL) || []).map((v) => v * NEW_SKILL_SLOTS * batch);
+
+  const nMat = idx.materials.opart.length;
+  const most = Array.from({ length: nMat }, () => new Array(4).fill(0));
+
+  for (const sid of idx.students.keys()) {
+    const bill = Array.from({ length: nMat }, () => new Array(4).fill(0));
+    let any = false;
+    for (const [table, lv, slots] of [["EX", NEW_EX, 1], ["일반", NEW_SKILL, NEW_SKILL_SLOTS]]) {
+      for (const [mi, g, q] of reqAt(idx.skill.get(`${sid}|${table}`), lv)) {
+        bill[mi][g] += q * slots;
+        any = true;
+      }
+    }
+    if (!any) continue;           // collab students, and anyone not yet in the cost table
+    bill.forEach((row, mi) => row.forEach((v, g) => { if (v > most[mi][g]) most[mi][g] = v; }));
+  }
+
+  const perType = Math.max(1, Math.ceil(batch / ARTIFACT_TYPES_PER_STUDENT));
+  const opart = most.map((row) => row.map((v) => v * perType));
+  return { batch, perType, bd, note, opart };
+}
+
+/* ------------------------------------------------------------------ */
 /* per-student roll-up                                                  */
 /* ------------------------------------------------------------------ */
 

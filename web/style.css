@@ -332,6 +332,23 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; margin: 0
 
 .totrow.zero { opacity: .45; }
 
+/* Reserve states (ADR 0009). The requirement is only half the question — a new student can
+   land next week — so a row also carries the surplus held for that. ▲ red: short of the
+   requirement. △ amber: requirement met, still under the reserve. + accent: spare above
+   it. Surplus is the one state worth pointing at, so it alone tints the row; tinting the
+   amber state too would paint most of the list in the full listing. */
+.totrow.buf .mark, .totrow.buf .val { color: var(--warn); }
+.totrow.over { background: var(--accent-soft); }
+.totrow.over .mark, .totrow.over .val { color: var(--accent); }
+.rail h2 .badge.over { background: var(--accent-soft); color: var(--accent); }
+
+.railnote { font-size: 11px; line-height: 1.55; color: var(--faint); margin: -4px 0 12px; }
+.railnote b { color: var(--muted); }
+.railnote .mk { font-family: var(--f-mono); margin-left: 7px; margin-right: 2px; }
+.railnote .mk.lack { color: var(--danger); }
+.railnote .mk.buf { color: var(--warn); }
+.railnote .mk.over { color: var(--accent); }
+
 .bigstat {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 14px; margin-bottom: 10px;

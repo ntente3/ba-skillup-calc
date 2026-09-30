@@ -1,6 +1,7 @@
 # ADR 0003 — Shortfall is shown with symbols, not signs
 
-Status: accepted
+Status: accepted — the number column is extended by [ADR 0009](0009-new-student-reserve.md),
+which adds the new-student reserve as a second line to measure against.
 
 ## Context
 
