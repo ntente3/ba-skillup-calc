@@ -592,7 +592,7 @@ function renderInventory() {
     m.opart.map((name, mi) => rowLabel(`op.${mi}.0`, name) + [0, 1, 2, 3].map((g) => cell(`op.${mi}.${g}`)).join("")).join("")));
 
   const tiers = GAME.gear.tierLabels;
-  out.push(`<p class="railnote">장비 선택권 1개 = 같은 티어의 장비 도면 1개. 장비 재고를 먼저 사용하고, 부족분에 종류 순서대로 배분합니다. 재고에 반영할 때 선택권도 차감됩니다.</p>`);
+  out.push(`<p class="railnote">장비 선택권 1개 = 같은 티어의 장비 도면 1개. 장비 재고를 먼저 사용하고, 같은 티어에서 부족한 장비의 보유 수량 비율대로 배분합니다. 부족량을 넘는 몫은 재분배하며, 남은 장비의 보유량이 모두 0이면 균등 배분합니다. 소수점 몫이 큰 장비부터 1개씩 배분하고, 동률이면 장비 종류 순서를 따릅니다. 재고에 반영할 때 선택권도 차감됩니다.</p>`);
   out.push(grid("장비", tiers.map((t) => `T${t}`),
     `<div>장비 선택권</div>${tiers.map((t) => cell(`eq-select.${t}`)).join("")}` +
     (GAME.gear.types || []).map((name, ti) => rowLabel(`eq.${ti}.2`, name) + tiers.map((t) => cell(`eq.${ti}.${t}`)).join("")).join("")));
