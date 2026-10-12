@@ -15,6 +15,7 @@ import { normalize, encodeFile, decodeFile, LoadError } from "../src/state/codec
 import { consumption } from "../src/core/calc.js";
 import { createFilters, renderFilterBar } from "./filters.js";
 import { createPending } from "./pending.js";
+import { allocateGear } from "../src/core/gear-stock.js";
 
 const STORAGE_KEY = "ba-skillup-state-v1";
 const $ = (s, r = document) => r.querySelector(s);
@@ -248,10 +249,11 @@ function pendingHtml() {
       <button class="act" data-pend="revert">되돌리기</button></div>`;
   }
   const t = PENDING.total(consumption);
+  const selectorQty = Object.values(allocateGear(t.gear, STATE.inv).selectors).reduce((a, b) => a + b, 0);
   const kinds = Object.keys(t.bd).length + Object.keys(t.note).length +
                 Object.keys(t.opart).length + Object.keys(t.gear).length;
   return `<div class="notice pend">
-    <span><b>강화 ${n}명 · 미반영 소모</b>소재 ${kinds}종${t.credit ? ` · 크레딧 ${fmt(t.credit)}` : ""} 을 재고에서 뺍니다.</span>
+    <span><b>강화 ${n}명 · 미반영 소모</b>소재 ${kinds}종${selectorQty ? ` · 장비 선택권 ${fmt(selectorQty)}개 사용` : ""}${t.credit ? ` · 크레딧 ${fmt(t.credit)}` : ""} 을 재고에서 뺍니다.</span>
     <button class="act primary" data-pend="apply">재고에 반영</button>
     <button class="act" data-pend="discard">무시</button></div>`;
 }
@@ -377,8 +379,8 @@ function reserveFor(key) {
 const reserveSchools = () =>
   [...new Set(GAME.students.filter((s) => !IDX.collab.has(s.sid)).map((s) => s.school))].filter(Boolean);
 
-function row(label, need, key) {
-  const have = key ? (STATE.inv[key] || 0) : null;
+function row(label, need, key, selected = 0) {
+  const have = key ? (STATE.inv[key] || 0) + selected : null;
   const res = reserveFor(key);
   const safe = need + res;                        // the requirement plus the next release
   const short = have === null ? 0 : Math.max(0, need - have);
@@ -393,7 +395,7 @@ function row(label, need, key) {
 
   const tip = have === null
     ? `필요 ${fmt(need)} · 보유량 미관리`
-    : [`필요 ${fmt(need)}`, `보유 ${fmt(have)}`, res ? `여유기준 ${fmt(res)}` : null,
+    : [`필요 ${fmt(need)}`, `보유 ${fmt(STATE.inv[key] || 0)}`, selected ? `선택권 배분 ${fmt(selected)}` : null, res ? `여유기준 ${fmt(res)}` : null,
        short > 0 ? `부족 ${fmt(short)}`
          : over < 0 ? `기준까지 ${fmt(-over)}` : `초과 ${fmt(over)}`]
       .filter(Boolean).join(" · ");
@@ -408,7 +410,7 @@ function row(label, need, key) {
   return `<div class="totrow ${cls}${DETAIL ? " detail" : ""}" style="--fill:${fill}%" title="${esc(tip)}">
     <span class="mark">${mark}</span>
     <span class="lbl">${icon(key)}${esc(label)}</span>
-    ${DETAIL ? `<span class="need">${fmt(need)}${have === null ? "" : ` / ${fmt(have)}`}</span>` : ""}
+    ${DETAIL ? `<span class="need">${fmt(need)}${have === null ? "" : ` / ${fmt(STATE.inv[key] || 0)}${selected ? ` + ${fmt(selected)} 선택권` : ""}`}</span>` : ""}
     <span class="val">${val}</span>
   </div>`;
 }
@@ -424,10 +426,10 @@ const groupHead = (name) =>
 let DETAIL = false;
 let MODE = "short";                       // short | over | all
 
-const isShort = (need, key) => need > 0 && need - (key ? (STATE.inv[key] || 0) : 0) > 0;
-const isOver = (need, key) => !!key && (STATE.inv[key] || 0) - need - reserveFor(key) > 0;
+const isShort = (need, key, selected = 0) => need > 0 && need - (key ? (STATE.inv[key] || 0) + selected : 0) > 0;
+const isOver = (need, key, selected = 0) => !!key && (STATE.inv[key] || 0) + selected - need - reserveFor(key) > 0;
 const shows = (it) =>
-  MODE === "all" ? true : MODE === "over" ? isOver(it.need, it.key) : isShort(it.need, it.key);
+  MODE === "all" ? true : MODE === "over" ? isOver(it.need, it.key, it.selected) : isShort(it.need, it.key, it.selected);
 
 /** Visibility filter — keeps the matching rows and their group headers. */
 function rowsFor(items) {
@@ -444,10 +446,10 @@ function rowsFor(items) {
 const renderRows = (items) => {
   const list = rowsFor(items);
   if (!list.length) return emptyRow();
-  return list.map((it) => (it.head ? groupHead(it.head) : row(it.label, it.need, it.key))).join("");
+  return list.map((it) => (it.head ? groupHead(it.head) : row(it.label, it.need, it.key, it.selected))).join("");
 };
 
-const countOf = (items, f) => items.filter((it) => !it.head && f(it.need, it.key)).length;
+const countOf = (items, f) => items.filter((it) => !it.head && f(it.need, it.key, it.selected)).length;
 
 /** Shortfall always earns a badge; the surplus count only while that mode is on. */
 const badge = (items) => {
@@ -525,13 +527,19 @@ function renderRail() {
 
   // Gear carries no reserve, so a tier appears only when it is needed or held.
   const gearItems = [];
+  const gearStock = allocateGear(Object.fromEntries(Object.entries(t.gear).map(([key, qty]) => [`eq.${key}`, qty])), STATE.inv);
   (GAME.gear.types || []).forEach((name, ti) => {
     for (const tier of GAME.gear.tierLabels) {
       const key = `eq.${ti}.${tier}`;
       const need = t.gear[`${ti}.${tier}`] || 0;
-      if (need || STATE.inv[key]) gearItems.push({ label: `${name} T${tier}`, need, key });
+      if (need || STATE.inv[key]) gearItems.push({ label: `${name} T${tier}`, need, key, selected: gearStock.selected[key] || 0 });
     }
   });
+
+  for (const tier of GAME.gear.tierLabels) {
+    const key = `eq-select.${tier}`;
+    if (STATE.inv[key]) gearItems.push({ label: `장비 선택권 T${tier}`, need: gearStock.selectors[key] || 0, key });
+  }
 
   const section = (title, items) =>
     `<section><h2>${esc(title)}${badge(items)}</h2><div class="totbox">${renderRows(items)}</div></section>`;
@@ -584,7 +592,9 @@ function renderInventory() {
     m.opart.map((name, mi) => rowLabel(`op.${mi}.0`, name) + [0, 1, 2, 3].map((g) => cell(`op.${mi}.${g}`)).join("")).join("")));
 
   const tiers = GAME.gear.tierLabels;
+  out.push(`<p class="railnote">장비 선택권 1개 = 같은 티어의 장비 도면 1개. 장비 재고를 먼저 사용하고, 부족분에 종류 순서대로 배분합니다. 재고에 반영할 때 선택권도 차감됩니다.</p>`);
   out.push(grid("장비", tiers.map((t) => `T${t}`),
+    `<div>장비 선택권</div>${tiers.map((t) => cell(`eq-select.${t}`)).join("")}` +
     (GAME.gear.types || []).map((name, ti) => rowLabel(`eq.${ti}.2`, name) + tiers.map((t) => cell(`eq.${ti}.${t}`)).join("")).join("")));
 
   const el = $("#inv");
@@ -596,6 +606,7 @@ function renderInventory() {
     if (n) STATE.inv[key] = n; else delete STATE.inv[key];
     saveSoon();
     refreshSoon();
+    renderPendingBar();
   };
 }
 

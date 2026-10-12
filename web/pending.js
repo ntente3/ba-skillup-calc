@@ -13,6 +13,8 @@
  * after it happens.
  */
 
+import { allocateGear } from "../src/core/gear-stock.js";
+
 const CUR_FIELDS = ["curStar", "curLv", "curUniq", "curEx", "curNormal", "curPass", "curSub",
                     "curGear1", "curGear2", "curGear3"];
 
@@ -76,9 +78,10 @@ export function createPending(idx, getStudent) {
      */
     apply(inv, consumption) {
       const totals = this.total(consumption);
+      const gear = allocateGear(totals.gear, inv);
       const before = { ...inv };
       const short = [];
-      for (const group of [totals.bd, totals.note, totals.opart, totals.gear]) {
+      for (const group of [totals.bd, totals.note, totals.opart, gear.debit, gear.selectors]) {
         for (const [key, qty] of Object.entries(group)) {
           const next = (inv[key] || 0) - qty;
           inv[key] = next;
